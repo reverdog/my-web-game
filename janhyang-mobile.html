@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>잔향 — 모바일</title>
+<style>
+:root{--bg:#0b0b14;--fg:#e8e8f4;--mut:#9a9ab8;--pn:#15152a;--ac:#8b7bff;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%;margin:0}
+body{position:relative;background:var(--bg);color:var(--fg);font:14px/1.45 system-ui,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+#ov{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#05050ad9;padding:12px}
+#ov[hidden]{display:none}
+#pn{background:var(--pn);border:1px solid #2e2e52;border-radius:14px;padding:16px;max-width:440px;width:100%;max-height:100%;overflow:auto}
+h2{margin:0 0 4px;font-size:19px}
+p{margin:0 0 4px;color:var(--mut);font-size:13px}
+button{display:block;width:100%;margin-top:8px;padding:10px 12px;text-align:left;background:#202040;color:var(--fg);border:1px solid #36366a;border-radius:10px;font:inherit;cursor:pointer}
+button:hover,button:focus-visible{border-color:var(--ac);outline:none}
+html{overscroll-behavior:none;-webkit-touch-callout:none}body{-webkit-user-select:none;user-select:none;touch-action:manipulation}
+@media (pointer:coarse){button{padding:14px;font-size:15px}}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="ov"><div id="pn"><h2 id="h"></h2><p id="s"></p><div id="bx"></div></div></div>
+<script>
+const MOB=true,U=MOB?1.4:1;
+const $=i=>document.getElementById(i),cv=$('c'),X=cv.getContext('2d'),ov=$('ov'),R=Math.random,TAU=Math.PI*2;
+const pk=a=>a[R()*a.length|0],rn=(a,b)=>a+R()*(b-a),dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const RO=['','Ⅰ','Ⅱ','Ⅲ'],ids=['fire','elec','split','time','dark'];
+const shuf=a=>a.map(v=>[R(),v]).sort((p,q)=>p[0]-q[0]).map(v=>v[1]);
+const mmss=t=>(t/60|0)+':'+('0'+(t%60|0)).slice(-2);
+const E={
+fire:['화염','#ff6a3d','적중 지점에 화염이 남는다','화염 범위·지속 증가','소멸 시 폭발'],
+elec:['번개','#5ad6ff','적중 시 1회 연쇄','연쇄 2회·피해 증가','연쇄 4회 + 감전 둔화'],
+split:['분열','#7dff9a','적중 시 2갈래 분열','분열체 피해 증가','분열체 3개 + 관통'],
+time:['시간','#ffd45a','0.7초 뒤 같은 탄 재출현','재출현 피해 증가','재출현 2회'],
+dark:['암흑','#b07bff','관통 2','관통 4','관통 6 + 귀환'],
+plasma:['플라즈마','#ff5ad1','화염+번개: 적중 시 폭발과 3연쇄'],
+rift:['공허 귀환','#9aa7ff','암흑+시간: 무한 관통·귀환·재출현']};
+const RC=[['fire','elec','plasma'],['dark','time','rift'],['split','time','mirror']];
+E.mirror=['거울 분신','#9ad0ff','분열+시간: 후방에도 사격'];
+const SC=[['storm','폭풍 Core','elec',3,'split',2],['inferno','화염 심판 Core','fire',3,'dark',2]];
+const DX=[['plasma','플라즈마','화염Ⅱ + 번개Ⅱ'],['rift','공허 귀환','암흑Ⅱ + 시간Ⅱ'],['mirror','거울 분신','분열 + ???'],['storm','폭풍 Core','Core Ⅲ + 번개Ⅲ + 분열Ⅱ'],['inferno','화염 심판 Core','Core Ⅲ + 화염Ⅲ + 암흑Ⅱ'],['aw0','태양 각성','Core Ⅲ + 전용 화염Ⅲ'],['aw1','뇌속 각성','Core Ⅲ + 전용 번개Ⅲ'],['aw2','불멸 각성','Core Ⅲ + 전용 암흑Ⅲ'],['aw3','시간 각성','Core Ⅲ + 전용 시간Ⅲ'],['aw4','분열 각성','Core Ⅲ + 전용 분열Ⅲ']];
+const CH=[
+{n:'공격형',d:'공격력 높음 · 이동 느림',hp:90,sp:135,dm:1.3,as:1,e:'fire'},
+{n:'이동형',d:'이동·공격 속도 높음',hp:85,sp:185,dm:1,as:1.15,e:'elec'},
+{n:'생존형',d:'체력 높음 · 공격력 낮음',hp:150,sp:150,dm:.85,as:1,e:'dark'}];
+const RU=[
+{n:'군집',gr:'s',u:1,d:'적 생성 +30%, 경험치 +10%',f:()=>{g.sm*=1.3;g.xm*=1.1}},
+{n:'질주',gr:'v',u:1,d:'적 이동 +20%, 경험치 +25%',f:()=>{g.es*=1.2;g.xm*=1.25}},
+{n:'풍요',gr:'g',u:1,d:'재화 +50%, 상점 3회',f:()=>{g.gm*=1.5;g.shops=3}},
+{n:'정예 시즌',gr:'e',u:1,d:'엘리트가 더 자주 등장',f:()=>{g.em*=.6}},
+{n:'소수 정예',gr:'s',u:2,d:'적 생성 −30%, 적 체력 +50%, 경험치 +30%',f:()=>{g.sm*=.7;g.hm*=1.5;g.xm*=1.3}},
+{n:'잔향의 폭풍',gr:'d',u:3,d:'잔향 드롭 ×2.5, 적 이동 +10%',f:()=>{g.dr*=2.5;g.es*=1.1}},
+{n:'속사 시대',gr:'a',u:4,d:'공격 속도 +20%, 최대 HP −20%',f:()=>{g.as*=1.2;g.mhp*=.8;g.hp=g.mhp}},
+{n:'황금 비',gr:'g',u:5,d:'재화 ×2, 적 체력 +20%',f:()=>{g.gm*=2;g.hm*=1.2}},
+{n:'엘리트 사냥',gr:'e',u:6,d:'엘리트가 매우 자주 등장',f:()=>{g.em*=.4}}];
+CH.push({n:'시간술사',d:'공격 속도 높음 · 시간 잔향 시작',hp:100,sp:150,dm:1,as:1.15,e:'time',u:'계정 Lv 3 달성',ul:3},
+{n:'분열자',d:'균형형 · 분열 잔향 시작',hp:105,sp:150,dm:1.1,as:1.05,e:'split',u:'영구 재화 150으로 구매',cost:150});
+const GO=[['보스','최종 보스 처치'],['최종 웨이브','최종 웨이브 40초 생존']];
+let W=0,H=0,TL=300,g,RL,k={},tv=null,jo=null,jid=-1,md=0,mx=0,my=0,Qa=[],cur=0,M={g:0,u:[0,0,0,0,0]};
+try{M=JSON.parse(localStorage.getItem('jh'))||M}catch(e){}
+M.dx=M.dx||[];M.uc=M.uc||[];M.ac=M.ac||[];M.ax=M.ax||0;let HD=0,TM=0;
+function AL(){let l=1,x=M.ax;while(x>=120+60*l){x-=120+60*l;l++}return[l,x,120+60*l]}
+const ok=i=>TM||!CH[i].u||(CH[i].ul?AL()[0]>=CH[i].ul:M.uc.includes(i));
+function pickR(){let L=TM?99:AL()[0],o=[],gs=new Set;for(const q of shuf(RU.filter(q=>q.u<=L))){if(gs.has(q.gr))continue;gs.add(q.gr);o.push(q);if(o.length==2)break}return o}
+const sv=()=>{try{localStorage.setItem('jh',JSON.stringify(M))}catch(e){}};
+const K=(...n)=>n.some(a=>k[a])?1:0;
+
+/* ---------- 대화창 큐 ---------- */
+function ask(t,s,o){Qa.push([t,s,o]);if(!cur)nx()}
+function nx(){let a=Qa.shift();if(!a){cur=0;ov.hidden=true;return}cur=1;ov.hidden=false;$('h').textContent=a[0];$('s').innerHTML=a[1];let bx=$('bx');bx.innerHTML='';a[2].forEach(o=>{let b=document.createElement('button');b.innerHTML=o.t;b.onclick=()=>{o.f();nx()};bx.append(b)})}
+const toast=s=>{g.toast=[s,3]};
+
+/* ---------- 런 시작 / 종료 ---------- */
+function newG(i){let c=CH[i],u=M.u;g={t:0,k:0,gold:0,xp:0,lv:1,need:24,mhp:c.hp+8*u[0],x:0,y:0,fa:0,sp:c.sp*(1+.03*u[3]),dm:c.dm*(1+.04*u[1]+.01*M.dx.length),as:c.as*(1+.03*u[2]),cr:.05+.01*u[4],inv:0,rv:1,cd:.4,st:'menu',goal:0,ch:0,hm:1,dx:1,rw:1,dr:.012,pt:2,sc:null,aw:0,bn:0,won:0,sm:1,xm:600/TL,es:1,gm:1,em:1,shops:2,sh:0,ev:0,elT:TL/7,fin:0,boss:null,spA:0,f1:0,hint:'fire',toast:null,en:[],pr:[],eb:[],zn:[],fx:[],pa:[],Q:[],sl:[{id:c.e,lv:1,lock:1},null,null,null,null]};g.hp=g.mhp}
+function menu(keep){if(!keep)RL={goal:R()<.5?0:1,rules:pickR(),hint:pk(ids)};
+ask('잔향','계정 Lv '+AL()[0]+' ('+AL()[1]+'/'+AL()[2]+' XP)<br><b>이번 런 규칙</b><br>목표: '+GO[RL.goal][1]+'<br>'+RL.rules.map(r=>r.n+' — '+r.d).join('<br>')+'<br>규칙 해금: '+RU.filter(q=>q.u>1).map(q=>'Lv'+q.u+' '+q.n).join(' · ')+'<br>힌트: '+E[RL.hint][0]+' 계열과 궁합이 좋습니다<br>특수 Core(Lv10~): 폭풍 = 번개Ⅲ+분열Ⅱ · 화염 심판 = 화염Ⅲ+암흑Ⅱ<br><br>WASD·방향키로 이동하면 공격은 자동으로 이동 방향에 나갑니다. 마우스를 누르면 그쪽으로 조준하고, 모바일은 화면을 드래그하세요.',
+CH.map((c,i)=>ok(i)?{t:`<b>${c.n}</b> — ${c.d}<br>전용 잔향: ${E[c.e][0]} · HP ${c.hp}<br>각성: ${DX[5+i][1]} (${DX[5+i][2]})`,f:()=>start(i)}:{t:'🔒 <b>'+c.n+'</b> — 해금 조건: '+c.u+'<br>전용 잔향: '+E[c.e][0]+' · 각성: '+DX[5+i][1],f:()=>{if(c.cost&&M.g>=c.cost){M.g-=c.cost;M.uc.push(i);sv()}menu(1)}}).concat([{t:'🧪 테스트 모드: '+(TM?'켜짐 (전부 해금 · 저장 안 됨)':'꺼짐'),f:()=>{TM=1-TM;menu()}},...(TM?[{t:'목표 변경: '+GO[RL.goal][0],f:()=>{RL.goal=1-RL.goal;menu(1)}},{t:'규칙 다시 뽑기',f:()=>menu()}]:[]),{t:'🏆 도전 과제 ('+M.ac.length+'/'+AC.length+')',f:ach},{t:'📖 도감 ('+M.dx.length+'/'+DX.length+')',f:dex},{t:'⚙ 영구 강화 (재화 '+M.g+')',f:meta},...(M.hd?[{t:'난이도: '+(HD?'Hard':'일반')+' (눌러서 변경)',f:()=>{HD=1-HD;menu(1)}}]:[]),{t:'런 길이: '+TL/60+'분'+(TL==120?' (테스트)':' (기본)')+' (눌러서 변경)',f:()=>{TL=TL==300?120:300;menu(1)}}]))}
+function meta(){let N=['최대 HP +8','공격력 +4%','공격 속도 +3%','이동 속도 +3%','치명타 +1%p'];
+ask('영구 강화','재화 '+M.g+' (런 종료 시 획득, 사망 시 절반)',N.map((n,i)=>{let c=20+M.u[i]*12;return{t:`${n} · Lv ${M.u[i]} · 비용 ${c}`,f:()=>{if(M.g>=c){M.g-=c;M.u[i]++;sv()}meta()}}}).concat([{t:'뒤로',f:()=>menu(1)}]))}
+const AC=[['first','첫 클리어','런 클리어',30,w=>w],['core3','Core Ⅲ 도달','레벨 10 달성',20,()=>g.lv>=10],['evo','특수 진화','특수 진화 1회',25,()=>g.dc>0],
+['sc','특수 Core','특수 Core 진화',40,()=>g.sc],['aw','각성','캐릭터 각성',40,()=>g.aw],['kill','학살자','한 런에 600마리 처치',30,()=>g.k>=600],
+['clean','무사 귀환','부활 사용 없이 클리어',50,w=>w&&g.rv>0],['hard','Hard 정복','Hard 클리어',80,w=>w&&HD]];
+function ach(){ask('도전 과제','달성하면 영구 재화를 받습니다. (테스트 모드에서는 달성되지 않음)<br><br>'+AC.map(q=>(M.ac.includes(q[0])?'✔ ':'· ')+'<b>'+q[1]+'</b> — '+q[2]+' (+'+q[3]+')').join('<br>'),[{t:'뒤로',f:()=>menu(1)}])}
+function dex(){ask('도감','발견하면 영구 보너스(공격력 +1%)가 쌓입니다.<br><br>'+DX.map(r=>{let f=M.dx.includes(r[0]),hd=r[0]=='mirror';return(f?'✔ ':'· ')+'<b>'+(hd&&!f?'???':r[1])+'</b> — '+(hd&&f?'분열Ⅱ + 시간Ⅱ':r[2])}).join('<br>'),[{t:'뒤로',f:()=>menu(1)}])}
+function start(i){newG(i);RL.rules.forEach(r=>r.f());if(HD){g.hm*=1.5;g.dx*=1.3;g.es*=1.1;g.sm*=1.25;g.rw*=1.5;g.dr+=.013}if(TL<=120){g.gm*=2.5;g.sm*=1.2}g.eq=shuf([0,1,2,3]).slice(0,2);g.ch=i;g.hint=RL.hint;g.goal=RL.goal;g.st='play'}
+function win(){g.won=1;if(!TM){M.hd=1;sv()}ask('목표 달성!','보너스 웨이브: 60초 동안 패널티 없이 완성한 빌드를 마음껏 시험해 보세요.',[{t:'보너스 웨이브 시작',f:()=>{g.bn=60;g.sm=2+g.lv*.12;g.eb=[]}},{t:'결과 보기',f:()=>endRun(1)}])}
+function endRun(w,b){g.st='end';let e=Math.floor((g.t/6+g.k/8)*(w?1:.5)*g.rw)+(b?15:0);let ax=Math.floor(e*1.5)+(w?20:0),L0=AL()[0];let ac=TM?[]:AC.filter(q=>!M.ac.includes(q[0])&&q[4](w));if(!TM){M.g+=e;M.ax+=ax;ac.forEach(q=>{M.ac.push(q[0]);M.g+=q[3]});sv()}let L1=AL()[0],nw=RU.filter(q=>q.u>L0&&q.u<=L1).map(q=>q.n).concat(CH.filter(c=>c.ul>L0&&c.ul<=L1).map(c=>c.n+'(캐릭터)'));ask(w?'런 클리어!':'런 종료',`생존 ${mmss(g.t)} · 처치 ${g.k} · 영구 재화 +${e} · 계정 XP +${ax}${TM?' (테스트 모드 — 저장 안 됨)':''}${L1>L0?'<br>🎉 계정 Lv '+L1+' 달성'+(nw.length?' — 해금: '+nw.join(', '):''):''}${ac.length?'<br>🏆 도전 과제: '+ac.map(q=>q[1]+' (+'+q[3]+')').join(', '):''}<br>Lv ${g.lv} · ${cn()}<br>빌드: ${g.sl.filter(Boolean).map(en).join(' · ')||'-'}`,[{t:'메뉴로',f:()=>{newG(0);menu()}}])}
+function hurt(d){if(g.inv>0||g.god)return;g.hp-=d;g.inv=.5;if(g.hp<=0){if(g.bn)endRun(1,1);else if(g.rv>0){g.rv--;g.hp=g.mhp*.6;g.inv=2.5;g.en.forEach(e=>{if(!e.boss&&dist(e,g)<220)e.dead=1});g.eb=[];toast('부활!')}else endRun(0)}}
+
+/* ---------- 잔향 ---------- */
+function echoOpt(id){let s=g.sl.find(q=>q&&q.id==id),full=!g.sl.includes(null),lv=s?s.lv:0,n=Math.min(3,lv+1);
+let tag=s?(lv<3?`강화 ${RO[lv]}→${RO[lv+1]}`:'최대 단계'):full?'⚠ 교체 (기존 잔향 초기화)':'새로 장착';
+let hint=RC.filter(r=>r.includes(id)).map(rc=>{let hd=rc[2]=='mirror'&&!M.dx.includes('mirror');return`<br><i>특수 진화: ${hd?'???':E[rc[2]][0]} (${E[rc[0]][0]}+${hd?'?':E[rc[1]][0]} Ⅱ↑) 현재 ${rc.slice(0,2).filter(a=>g.sl.some(q=>q&&q.id==a&&q.lv>1)).length}/2</i>`}).join('');
+return{t:`<b style="color:${E[id][1]}">${E[id][0]} ${RO[n]}</b> · ${tag}<br>${E[id][1+n]}${hint}`,f:()=>give(id)}}
+function offer(){let c=[],w=i=>(i==g.hint?2:1)*(g.sl.some(s=>s&&s.id==i)?1.4:1);
+while(c.length<3){let p=ids.filter(i=>!c.includes(i)),t=p.reduce((a,i)=>a+w(i),0)*R();for(const i of p){t-=w(i);if(t<=0){c.push(i);break}}}
+ask('잔향 선택','하나를 가져갑니다. 시너지는 카드에서 확인하세요.',c.map(echoOpt).concat([{t:'넘기기 — 현재 잔향 유지',f:()=>{}}]))}
+function give(id,auto){let s=g.sl.find(q=>q&&q.id==id);
+if(s){if(s.lv<3&&!s.done){s.lv++;toast(E[id][0]+' '+RO[s.lv])}evo();return}
+let i=g.sl.indexOf(null);if(i>=0){g.sl[i]={id,lv:1};toast(E[id][0]+' 획득');evo();return}
+if(auto)return;
+ask('교체할 잔향 선택','⚠ 교체하면 기존 잔향의 성장 단계가 완전히 초기화됩니다.',g.sl.map((q,j)=>q.lock?0:{t:`<b style="color:${E[q.id][1]}">${E[q.id][0]} ${q.done?'★':RO[q.lv]}</b> → ${E[id][0]} Ⅰ`,f:()=>{g.sl[j]={id,lv:1};evo()}}).filter(Boolean).concat([{t:'취소 (기존 잔향 유지)',f:()=>{}}]))}
+function evo(){for(const[a,b,r]of RC){let i=g.sl.findIndex(s=>s&&s.id==a&&s.lv>1),j=g.sl.findIndex(s=>s&&s.id==b&&s.lv>1);
+if(i>=0&&j>=0){let lk=g.sl[i].lock||g.sl[j].lock;g.sl[Math.min(i,j)]={id:r,lv:1,done:1,lock:lk};g.sl[Math.max(i,j)]=null;toast('특수 진화! '+E[r][0]);disc(r)}}evoCore()}
+function disc(id){g.dc=(g.dc||0)+1;if(TM){toast('발견! '+(DX.find(r=>r[0]==id)||[0,id])[1]+' (테스트: 저장 안 됨)');return}if(!M.dx.includes(id)){M.dx.push(id);sv();toast('도감 등록! '+(DX.find(r=>r[0]==id)||[0,id])[1])}}
+function evoCore(){if(g.lv<10)return;
+if(!g.sc)for(const[id,n,a,la,b,lb]of SC){let i=g.sl.findIndex(q=>q&&q.id==a&&q.lv>=la&&!q.lock),j=g.sl.findIndex(q=>q&&q.id==b&&q.lv>=lb&&!q.lock);
+if(i>=0&&j>=0){g.sl[i]=g.sl[j]=null;g.sc=id;toast('특수 Core 진화! '+n);disc(id);break}}
+let s0=g.sl[0];if(!g.aw&&s0&&s0.lock&&s0.id==CH[g.ch].e&&s0.lv>=3){g.aw=1;s0.done=1;disc('aw'+g.ch);toast('각성! '+DX[5+g.ch][1]);
+[()=>{g.dm*=1.5;g.big=1},()=>{g.sp*=1.25;g.as*=1.3},()=>{g.mhp+=60;g.hp+=60;g.rv++;g.dm*=1.2},()=>{g.as*=1.5;g.cr+=.1},()=>{g.dm*=1.35;g.sp*=1.1;g.mhp+=30;g.hp+=30}][g.ch]()}}
+function lvl(){if(g.lv==5||g.lv==10)toast('Core 진화! Core '+RO[g.lv==5?2:3]);evoCore();
+if(!g.f1){g.f1=1;offer();return}
+let S=[['최대 HP +20',()=>{g.mhp+=20;g.hp+=20}],['이동 속도 +8%',()=>g.sp*=1.08],['공격 속도 +10%',()=>g.as*=1.1],['공격력 +12%',()=>g.dm*=1.12],['치명타 확률 +6%p',()=>g.cr+=.06]];
+let c=shuf(S).slice(0,3).map(s=>({t:s[0],f:s[1]}));if(R()<.18)c[2]=echoOpt(pk(ids));
+ask('레벨 '+g.lv,'스탯을 선택하세요',c)}
+const ef=q=>{let e=E[q.id];return e.length<4?e[2]:e[1+q.lv]},en=q=>E[q.id][0]+' '+(q.done?'★':RO[q.lv]);
+const cn=()=>'Core '+RO[g.lv>=10?3:g.lv>=5?2:1]+(g.sc?' · '+SC.find(q=>q[0]==g.sc)[1]:'');
+function einfo(i){let q=g.sl[i];if(!q)return;let e=E[q.id],sp=e.length<4,rc=RC.filter(x=>x.includes(q.id)).map(x=>{let hd=x[2]=='mirror'&&!M.dx.includes('mirror');return(hd?'???':E[x[2]][0])+' ('+E[x[0]][0]+'+'+(hd?'?':E[x[1]][0])+' Ⅱ↑)'}).join(', ');
+ask(en(q),'현재 효과: '+ef(q)+(!sp&&q.lv<3&&!q.done?'<br>다음 단계('+RO[q.lv+1]+'): '+e[2+q.lv]:'')+(q.lock?'<br>전용 잔향 — 교체할 수 없습니다':'')+(sp?'<br>완성형 특수 잔향 — 더 이상 성장하지 않습니다':rc?'<br>특수 진화: '+rc:''),[{t:'닫기',f:()=>{}}])}
+function pause(){if(g.st!='play'||cur)return;k={};md=0;ask('⏸ 일시정지',cn()+' · Lv '+g.lv+'<br>'+g.sl.map(q=>q?'<b style="color:'+E[q.id][1]+'">'+en(q)+'</b> — '+ef(q):'· 빈 슬롯').join('<br>')+'<br><br><b>보는 법</b><br>• 적: 어두운 몸통 + 붉은 테두리 (삼각 빠름 · 사각 튼튼 · 마름모 돌진 · 겹원 분열 · ! 폭발 · 육각 엘리트)<br>• 내 탄에 도는 색 점 = 장착한 잔향<br>• 주황 점선 원 화염 지대 · 하늘색 번개 연쇄 · 금색 빈 고리 시간 재출현 · 푸른 링 공명파<br>화면 아래 슬롯을 눌러도 잔향 효과를 볼 수 있습니다.',[{t:'계속하기',f:()=>{}},...(TM?[{t:'🧪 테스트 도구',f:tp}]:[]),{t:'런 포기하고 결과 보기',f:()=>endRun(0)}])}
+function tp(){const T=[
+['레벨 +1',()=>{g.xp=g.need}],['잔향 3택1 열기',offer],
+['보유 잔향 전부 +1단계',()=>{g.sl.forEach(q=>{if(q&&q.lv<3&&!q.done)q.lv++});evo()}],
+['재화 +100',()=>{g.gold+=100}],['체력 전부 회복',()=>{g.hp=g.mhp}],
+['시간 +30초 건너뛰기',()=>{g.t+=30}],['보스 / 최종 웨이브 바로 시작',()=>{g.t=Math.max(g.t,TL)}],
+['상점 열기',shop],['이벤트 열기',event],['무적: '+(g.god?'켜짐':'꺼짐'),()=>{g.god=g.god?0:1}]];
+ask('🧪 테스트 도구','Lv '+g.lv+' · '+cn()+' · 시간 '+mmss(g.t),T.map(t=>({t:t[0],f:()=>{t[1]();tp()}})).concat([{t:'닫기',f:()=>{}}]))}
+function hud(a,b){if(g.st!='play'||cur)return 0;let w=W/U,h=H/U,x=a/U,y=b/U;
+if(x>w-42&&x<w-4&&y<44)return pause;
+for(let i=0;i<5;i++){let sx=w/2-90+i*36;if(x>sx-2&&x<sx+34&&y>h-56&&y<h-10&&g.sl[i])return()=>einfo(i)}return 0}
+function shop(){let o=[
+{t:'잔향 3택1 (40)',c:40,g:offer},
+{t:'체력 50% 회복 (25)',c:25,g:()=>{g.hp=Math.min(g.mhp,g.hp+g.mhp*.5)}},
+{t:'최대 HP +25 (35)',c:35,g:()=>{g.mhp+=25;g.hp+=25}},
+{t:'부활 +1 (90)',c:90,g:()=>{g.rv++}}];
+ask('상점','보유 재화 '+(g.gold|0),o.map(x=>({t:x.t,f:()=>{if(g.gold>=x.c){g.gold-=x.c;x.g();shop()}else{toast('재화 부족');shop()}}})).concat([{t:'나가기',f:()=>{}}]))}
+const EVP=[
+[['<b>무기고 습격</b><br>공격력 +15%',()=>{g.dm*=1.15}],['<b>비상식량</b><br>HP 전부 회복, 재화 +40',()=>{g.hp=g.mhp;g.gold+=40}]],
+[['<b>피의 계약</b><br>최대 HP −20%, 공격력 +30%',()=>{g.mhp*=.8;g.hp=Math.min(g.hp,g.mhp);g.dm*=1.3}],['<b>고요한 샘</b><br>HP 전부 회복, 이후 적 이동 +10%',()=>{g.hp=g.mhp;g.es*=1.1}]],
+[['<b>잔향 공명</b><br>보유 잔향 하나가 한 단계 상승',()=>{let c=g.sl.filter(q=>q&&q.lv<3&&!q.done);if(c.length){pk(c).lv++;evo()}}],['<b>잔향 탐색</b><br>잔향 3택1',offer]],
+[['<b>대규모 침공</b><br>적 생성 +30%, 경험치 +25%',()=>{g.sm*=1.3;g.xm*=1.25}],['<b>평온</b><br>적 생성 −20%, 공격 속도 +10%',()=>{g.sm*=.8;g.as*=1.1}]]];
+function event(){let p=EVP[g.eq[Math.max(0,g.ev-1)]];ask('이벤트','선택한 효과는 런이 끝날 때까지 유지됩니다.',p.map(x=>({t:x[0],f:x[1]})))}
+
+/* ---------- 전투 ---------- */
+function mk(x0,y0,a,d,m,c,ch){let p={x:x0,y:y0,vx:Math.cos(a)*400,vy:Math.sin(a)*400,a,d,m,c,ch,r:ch?4:g.big?11:7,life:1,age:0,h:new Set(),pi:m.rift?99:m.dark?[0,4,6,9][m.dark]:3,rt:m.rift||m.dark==3};g.pr.push(p);return p}
+function shoot(){let cl=g.lv>=10?3:g.lv>=5?2:1,m={},col='#fff',b=0;
+g.sl.forEach(s=>{if(s){m[s.id]=s.lv;if(s.lv>=b){b=s.lv;col=E[s.id][1]}}});
+if(g.sc=='storm')m.elec=3;if(g.sc=='inferno'){m.fire=3;m.dark=3}
+let d=10*g.dm*(g.sc=='storm'?.75:1),a=g.fa,sx=g.x,sy=g.y,n=g.sc=='storm'?8:[0,1,3,5][cl],fr=(f,gh)=>{for(let i=0;i<n;i++)mk(sx,sy,g.sc=='storm'?a+i*TAU/8:a+(i-(n-1)/2)*.15,d*f,m,col).gh=gh;if(m.mirror)mk(sx,sy,a+Math.PI,d*f*.7,m,col).gh=gh};
+fr(1);let ct=m.rift?2:m.time?(m.time==3?2:1):0;
+for(let j=1;j<=ct;j++)g.Q.push({t:.7*j,f:()=>{fr(m.rift?.8:[0,.5,.7,.7][m.time],1);g.fx.push({c:E.time[1],x:sx,y:sy,r:26,t:.3,ring:1})}})}
+function pulse(){let c=g.lv>=10?3:g.lv>=5?2:1,r=90+25*c;for(const e of g.en)if(!e.dead&&dist(e,g)<r+e.r)dmg(e,10*g.dm*(1.2+.3*c));g.fx.push({c:'#9bb3ff',x:g.x,y:g.y,r,t:.3,ring:1})}
+function dmg(e,d){e.hp-=d;e.fl=.1;if(e.hp<=0&&!e.dead)kill(e)}
+function boom(x0,y0,r,d,c){for(const e of g.en)if(!e.dead&&Math.hypot(e.x-x0,e.y-y0)<r+e.r)dmg(e,d);g.fx.push({c,x:x0,y:y0,r,t:.25})}
+function chain(e,n,d,sl){let cu=e,seen=new Set([e]);for(let i=0;i<n;i++){let t=null,b=170*170;for(const q of g.en){if(seen.has(q)||q.dead)continue;let dd=(q.x-cu.x)**2+(q.y-cu.y)**2;if(dd<b){b=dd;t=q}}if(!t)break;seen.add(t);g.fx.push({l:[cu.x,cu.y,t.x,t.y],t:.18});dmg(t,d);if(sl)t.sl=1.5;cu=t}}
+function hit(p,e){let c=R()<g.cr,d=p.d*(c?2:1),m=p.m;dmg(e,d);burst(e.x,e.y,p.c,3);if(!p.ch)for(const o of g.en)if(o!==e&&!o.dead&&Math.hypot(o.x-e.x,o.y-e.y)<36)dmg(o,d*.35);
+if(m.fire){let z=g.zn.find(z=>Math.hypot(z.x-e.x,z.y-e.y)<20),t=(2+m.fire)*(c?1.6:1);if(z)z.t=Math.max(z.t,t);else if(g.zn.length<40)g.zn.push({x:e.x,y:e.y,r:22+8*m.fire,t,dps:d*.9,b:m.fire==3,c:E.fire[1]})}
+if(m.elec)chain(e,[0,1,2,4][m.elec]+(c?1:0),d*(m.elec>1?.7:.55),m.elec==3);
+if(m.plasma){boom(e.x,e.y,58,d*1.2,E.plasma[1]);chain(e,3,d*.6)}
+if(m.split&&!p.ch){let n=[0,2,2,3][m.split];g.fx.push({c:E.split[1],x:e.x,y:e.y,r:18,t:.22,ring:1});for(let i=0;i<n;i++){let q=mk(e.x,e.y,p.a+(i-(n-1)/2)*.8,d*.5,{},E.split[1],1);q.h.add(e);q.pi=m.split==3?3:1}}}
+function kill(e){e.dead=1;g.k++;burst(e.x,e.y,'#ff6f7f',e.el?14:6);g.xp+=e.xp*g.xm;g.gold+=e.gd*g.gm;
+if(e.tr.includes('split'))for(let i=0;i<2;i++){let c=mkE({r:6,hm:.4,xp:.2,gd:.1});c.x=e.x+rn(-8,8);c.y=e.y+rn(-8,8);c.mh=c.hp;g.en.push(c)}
+if(e.tr.includes('boom')&&dist(e,g)<60)hurt(12);
+if(e.boss)win();else if(e.el)offer();else if(R()<g.dr)give(pk(ids),1)}
+function mkE(o){let p=Math.min(g.t/TL,1.2),e=Object.assign({hp:16*(1+2*p),sp:rn(50,70)*g.es,dm:(7+7*p)*g.dx,r:9,xp:.5,gd:.4,tr:[],c:'#e0566a',fl:0,sl:0},o);e.hp*=(o.hm||1)*g.hm;return e}
+function spawnAt(o){let a=R()*TAU,d=Math.max(W,H)*.6+30,e=mkE(o);e.x=g.x+Math.cos(a)*d;e.y=g.y+Math.sin(a)*d;e.mh=e.hp;g.en.push(e);return e}
+function spawnN(){let p=Math.min(g.t/TL,1.2),o={};
+if(R()<.06+.4*p){let tr=[];for(let i=R()<.3?2:1;i>0;i--){let t=pk(['fast','tank','dash','split','boom']);if(!tr.includes(t))tr.push(t)}
+o={tr,xp:1.2,gd:1,c:'#ffb04a',hm:tr.includes('tank')?2.5:1,r:tr.includes('tank')?12:9};if(tr.includes('fast'))o.sp=rn(50,70)*g.es*1.6}
+spawnAt(o)}
+function bossAtk(e,a){let ring=e.ph%2,n=ring?16:5;for(let i=0;i<n;i++){let b=ring?i/n*TAU+e.ph*.3:a+(i-2)*.25;g.eb.push({x:e.x,y:e.y,vx:Math.cos(b)*150,vy:Math.sin(b)*150,t:7})}}
+
+function upd(dt){
+g.t+=dt;g.inv-=dt;g.hp=Math.min(g.mhp,g.hp+1.5*dt);
+let ix=K('d','arrowright')-K('a','arrowleft'),iy=K('s','arrowdown')-K('w','arrowup');
+if(tv){ix+=tv.x;iy+=tv.y}
+let l=Math.hypot(ix,iy);if(l>1){ix/=l;iy/=l}
+g.x+=ix*g.sp*dt;g.y+=iy*g.sp*dt;
+if(l>.1)g.fa=Math.atan2(iy,ix);if(md)g.fa=Math.atan2(my,mx);
+if((g.cd-=dt)<=0){shoot();g.cd=.8/g.as}
+if((g.pt-=dt)<=0){g.pt=4;pulse()}
+g.Q.forEach(q=>q.t-=dt);let due=g.Q.filter(q=>q.t<=0);g.Q=g.Q.filter(q=>q.t>0);due.forEach(q=>q.f());
+/* 타임라인 */
+if(g.sh<g.shops&&g.t>=TL*[.28,.62,.84][g.sh]){g.sh++;shop()}
+if(g.ev<2&&g.t>=TL*[.33,.7][g.ev]){g.ev++;event()}
+if(g.goal==0&&!g.boss&&g.t>=TL){g.boss=spawnAt({hp:2600*Math.min(1,.4+TL/1000),r:38,sp:32,dm:20,el:1,boss:1,xp:0,gd:30,c:'#c04cff',bt:2,ph:0});toast('최종 보스 출현!')}
+if(g.goal==1&&!g.fin&&g.t>=TL){g.fin=1;g.sm*=2;g.em=.5;toast('최종 웨이브! 40초 생존')}
+if(g.fin&&!g.won&&g.t>=TL+40){win();return}
+if(g.bn&&(g.bn-=dt)<=0){endRun(1,1);return}
+let p=Math.min(g.t/TL,1.2);g.spA+=(1.1+3.2*p)*g.sm*dt;
+while(g.spA>=1){g.spA--;if(g.en.length<(MOB?170:230))spawnN()}
+if(!g.boss&&(g.elT-=dt)<=0){g.elT=TL/7*g.em;spawnAt({hm:14,r:16,sp:55*g.es,dm:16,xp:8,gd:6,el:1,c:'#ff7a1a',tr:['dash']})}
+/* 적 */
+for(const e of g.en){if(e.dead)continue;let a=Math.atan2(g.y-e.y,g.x-e.x),s=e.sp*(e.sl>0?.5:1);e.sl-=dt;e.fl-=dt;
+if(e.tr.includes('dash')){e.dt=(e.dt||2)-dt;if(e.dt<0){e.dt=3+R()*2;e.ds=.4}if(e.ds>0){e.ds-=dt;s*=3.5}}
+e.x+=Math.cos(a)*s*dt;e.y+=Math.sin(a)*s*dt;
+if(e.boss){e.bt-=dt;if(e.bt<=0){e.bt=e.hp<e.mh/2?1.5:2.2;e.ph++;bossAtk(e,a)}}
+if(dist(e,g)<e.r+10)hurt(e.dm)}
+for(const b of g.eb){b.x+=b.vx*dt;b.y+=b.vy*dt;b.t-=dt;if(Math.hypot(b.x-g.x,b.y-g.y)<14){b.t=0;hurt(10)}}
+g.eb=g.eb.filter(b=>b.t>0);
+/* 투사체 */
+for(const q of g.pr){q.age+=dt;q.life-=dt;
+if(q.rt&&!q.bk&&q.age>.45){q.bk=1;q.h.clear();q.life=2}
+if(q.bk){let a=Math.atan2(g.y-q.y,g.x-q.x);q.vx=Math.cos(a)*420;q.vy=Math.sin(a)*420;if(Math.hypot(g.x-q.x,g.y-q.y)<16)q.life=0}
+q.x+=q.vx*dt;q.y+=q.vy*dt;
+for(const e of g.en){if(e.dead||q.h.has(e))continue;if(Math.hypot(e.x-q.x,e.y-q.y)<e.r+q.r){q.h.add(e);hit(q,e);if(--q.pi<=0){q.life=0;break}}}}
+g.pr=g.pr.filter(q=>q.life>0);
+for(const q of g.pr)if(!q.ch&&g.pa.length<250&&R()<.6)g.pa.push({x:q.x,y:q.y,vx:rn(-25,25),vy:rn(-25,25),t:.3,c:q.c,r:2.5});
+for(const p of g.pa){p.x+=p.vx*dt;p.y+=p.vy*dt;p.t-=dt}g.pa=g.pa.filter(p=>p.t>0);
+for(const z of g.zn){z.t-=dt;for(const e of g.en)if(!e.dead&&Math.hypot(e.x-z.x,e.y-z.y)<z.r+e.r)dmg(e,z.dps*dt);if(z.t<=0&&z.b)boom(z.x,z.y,z.r+14,z.dps*1.5,E.fire[1])}
+g.zn=g.zn.filter(z=>z.t>0);
+g.fx.forEach(f=>f.t-=dt);g.fx=g.fx.filter(f=>f.t>0);
+g.en=g.en.filter(e=>!e.dead);
+if(g.toast&&(g.toast[1]-=dt)<=0)g.toast=null;
+while(g.xp>=g.need){g.xp-=g.need;g.lv++;g.need=12+g.lv*7;lvl()}}
+
+/* ---------- 그리기 ---------- */
+const poly=(x,y,r,n,a)=>{X.beginPath();for(let i=0;i<n;i++){let t=a+i*TAU/n;X.lineTo(x+Math.cos(t)*r,y+Math.sin(t)*r)}X.closePath()};
+const glow=(x,y,r,c,al)=>{X.globalAlpha=al;X.fillStyle=c;X.beginPath();X.arc(x,y,r,0,TAU);X.fill()};
+const burst=(x,y,c,n)=>{for(let i=0;i<n&&g.pa.length<260;i++){let a=R()*TAU,v=rn(40,140);g.pa.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,t:rn(.25,.5),c,r:rn(1.5,3)})}};
+const EC={fast:'#8a3d1c',tank:'#4a3a40',dash:'#7a2a2a',split:'#5e2a5a',boom:'#8a1c1c'};
+const bar=(a,b,w,h,v,c)=>{X.fillStyle='#ffffff22';X.fillRect(a,b,w,h);X.fillStyle=c;X.fillRect(a,b,w*Math.max(0,Math.min(1,v)),h)};
+function draw(){X.fillStyle='#0b0b14';X.fillRect(0,0,W,H);
+X.save();X.translate(W/2-g.x,H/2-g.y);
+X.fillStyle='#1d1d36';let s=90;for(let a=Math.floor((g.x-W/2)/s)*s;a<g.x+W/2+s;a+=s)for(let b=Math.floor((g.y-H/2)/s)*s;b<g.y+H/2+s;b+=s)X.fillRect(a-1,b-1,3,3);
+for(const z of g.zn){let k=Math.min(1,z.t*.6),w=1+.08*Math.sin(g.t*10+z.x);X.globalCompositeOperation='lighter';let gr=X.createRadialGradient(z.x,z.y,2,z.x,z.y,z.r*w);gr.addColorStop(0,'rgba(255,170,60,'+.55*k+')');gr.addColorStop(1,'rgba(255,60,0,0)');X.fillStyle=gr;X.beginPath();X.arc(z.x,z.y,z.r*w,0,TAU);X.fill();X.globalCompositeOperation='source-over';X.strokeStyle='rgba(255,120,40,'+.8*k+')';X.lineWidth=2;X.setLineDash([6,5]);X.beginPath();X.arc(z.x,z.y,z.r,0,TAU);X.stroke();X.setLineDash([])}
+
+for(const e of g.en){let a=Math.atan2(g.y-e.y,g.x-e.x),q=e.tr[0];
+X.fillStyle=e.fl>0?'#fff':e.sl>0?'#2a6a7a':e.boss?'#2a0c26':e.el?'#7a1a14':EC[q]||'#6e1f2f';X.strokeStyle=e.sl>0?'#6fe':e.el?'#fff':'#ff6f7f';X.lineWidth=e.boss?4:2.5;
+if(e.boss)poly(e.x,e.y,e.r,8,a);else if(e.el)poly(e.x,e.y,e.r,6,a);else if(q=='fast')poly(e.x,e.y,e.r+3,3,a);else if(q=='dash')poly(e.x,e.y,e.r+3,4,a);else if(q=='tank')poly(e.x,e.y,e.r*1.25,4,Math.PI/4);else{X.beginPath();X.arc(e.x,e.y,e.r+(q=='boom'?Math.sin(g.t*14)*1.5:0),0,TAU)}
+X.fill();X.stroke();
+if(q=='split'){X.beginPath();X.arc(e.x,e.y,e.r*.45,0,TAU);X.stroke()}
+if(q=='boom'){X.fillStyle='#fff';X.font='bold 11px sans-serif';X.textAlign='center';X.fillText('!',e.x,e.y+4)}
+if(e.boss){X.strokeStyle='#ffd45a';X.lineWidth=3;poly(e.x,e.y,e.r*.55,8,-a);X.stroke()}
+if(e.el&&!e.boss)bar(e.x-14,e.y-e.r-10,28,4,e.hp/e.mh,'#ff7a1a')}
+
+for(const b of g.eb){X.fillStyle='#ff2a4a';X.strokeStyle='#fff';X.lineWidth=1.5;poly(b.x,b.y,6,4,g.t*6);X.fill();X.stroke()}
+
+X.globalCompositeOperation='lighter';
+for(const q of g.pr){let a=Math.atan2(q.vy,q.vx);
+if(q.gh){X.strokeStyle=q.c;X.lineWidth=2.5;X.globalAlpha=.9;X.beginPath();X.arc(q.x,q.y,q.r*1.6,0,TAU);X.stroke();continue}
+glow(q.x,q.y,q.r*2.6,q.c,.22);X.strokeStyle=q.c;X.globalAlpha=.5;X.lineWidth=q.r*1.3;X.beginPath();X.moveTo(q.x,q.y);X.lineTo(q.x-Math.cos(a)*q.r*5,q.y-Math.sin(a)*q.r*5);X.stroke();glow(q.x,q.y,q.r*1.3,q.c,.9);glow(q.x,q.y,q.r*.6,'#fff',1);
+let ks=Object.keys(q.m);ks.forEach((id,i)=>{let t=g.t*8+i*TAU/ks.length;glow(q.x+Math.cos(t)*q.r*2,q.y+Math.sin(t)*q.r*2,2.2,E[id][1],1)})}
+for(const p of g.pa)glow(p.x,p.y,p.r*Math.min(1,p.t*3),p.c,Math.min(1,p.t*3));
+X.globalAlpha=1;X.globalCompositeOperation='source-over';
+
+let pc=E[(g.sl.find(Boolean)||{id:'fire'}).id][1];
+if(g.inv<=0||(g.t*20|0)%2){X.fillStyle='#fff';X.beginPath();X.arc(g.x,g.y,10,0,TAU);X.fill();X.strokeStyle=pc;X.lineWidth=3;X.beginPath();X.arc(g.x,g.y,13,0,TAU);X.stroke();X.beginPath();X.moveTo(g.x,g.y);X.lineTo(g.x+Math.cos(g.fa)*20,g.y+Math.sin(g.fa)*20);X.stroke()}
+X.globalCompositeOperation='lighter';
+for(const f of g.fx){if(f.l){let[x1,y1,x2,y2]=f.l,dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy)||1,nx=-dy/L,ny=dx/L,o=[];for(let i=1;i<5;i++)o.push((R()-.5)*20);
+for(let w=0;w<2;w++){X.strokeStyle=w?'#fff':'#3cc8ff';X.lineWidth=w?1.5:5;X.globalAlpha=w?1:.55;X.beginPath();X.moveTo(x1,y1);for(let i=1;i<5;i++)X.lineTo(x1+dx*i/5+nx*o[i-1],y1+dy*i/5+ny*o[i-1]);X.lineTo(x2,y2);X.stroke()}}
+else{let k=1-Math.min(1,f.t/.3);if(!f.ring){X.globalAlpha=.4*(1-k);X.fillStyle=f.c;X.beginPath();X.arc(f.x,f.y,f.r*(.5+.5*k),0,TAU);X.fill()}X.globalAlpha=1-k;X.strokeStyle=f.c;X.lineWidth=3;X.beginPath();X.arc(f.x,f.y,f.r*(.4+.6*k),0,TAU);X.stroke()}}
+X.globalAlpha=1;X.globalCompositeOperation='source-over';
+
+X.restore();
+/* HUD */
+const w0=W,h0=H;X.save();X.scale(U,U);W/=U;H/=U;
+bar(12,12,MOB?80:160,10,g.hp/g.mhp,'#ff4d6d');bar(0,H-5,W,5,g.xp/g.need,'#8b7bff');
+X.strokeStyle='#ffffff77';X.lineWidth=2;X.strokeRect(W-36,8,26,26);X.fillStyle='#e8e8f4';X.fillRect(W-29,15,4,12);X.fillRect(W-21,15,4,12);
+X.fillStyle='#e8e8f4';X.font='12px system-ui,sans-serif';X.textAlign='left';
+X.fillText(`HP ${Math.ceil(g.hp)}/${Math.ceil(g.mhp)}  Lv ${g.lv}  부활 ${g.rv}  재화 ${g.gold|0}${TM?' · TEST'+(g.god?' · 무적':''):''}`,12,38);
+X.textAlign='center';X.fillText(g.bn?'보너스 웨이브 '+Math.ceil(g.bn)+'초':g.boss?'BOSS':g.fin?'생존 '+Math.ceil(TL+40-g.t)+'초':mmss(Math.max(0,TL-g.t))+' → '+GO[g.goal][0],W/2,18);
+if(g.boss&&!g.boss.dead)bar(W/2-120,46,240,8,g.boss.hp/g.boss.mh,'#c04cff');
+let cl=g.lv>=10?3:g.lv>=5?2:1;X.fillStyle='#e8e8f4';X.fillText('Core '+RO[cl]+(g.sc?' · '+SC.find(q=>q[0]==g.sc)[1]:''),W/2,H-58);
+g.sl.forEach((q,i)=>{let a=W/2-90+i*36,b=H-50;X.strokeStyle=q?E[q.id][1]:'#444';X.lineWidth=2;X.strokeRect(a,b,32,36);
+if(q){X.fillStyle=E[q.id][1];X.font='bold 14px system-ui,sans-serif';X.fillText(E[q.id][0][0],a+16,b+16);X.font='11px system-ui,sans-serif';X.fillText(q.done?'★':RO[q.lv]+(q.lock?'·':''),a+16,b+31)}});
+if(g.toast){X.globalAlpha=Math.min(1,g.toast[1]);X.fillStyle='#fff';X.font='bold 18px system-ui,sans-serif';X.fillText(g.toast[0],W/2,90);X.globalAlpha=1}
+W=w0;H=h0;X.restore();
+if(jo&&tv){X.strokeStyle='#ffffff55';X.lineWidth=2;X.beginPath();X.arc(jo.x,jo.y,50,0,TAU);X.stroke();X.fillStyle='#ffffff44';X.beginPath();X.arc(jo.x+tv.x*50,jo.y+tv.y*50,18,0,TAU);X.fill()}}
+
+/* ---------- 입력 / 루프 ---------- */
+const rc=e=>{let r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top]};
+addEventListener('keydown',e=>{k[e.key.toLowerCase()]=1;if(k.p||k.escape){k.p=k.escape=0;pause()}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)pause()});addEventListener('keyup',e=>{k[e.key.toLowerCase()]=0});
+cv.addEventListener('pointerdown',e=>{let[a,b]=rc(e);let hq=hud(a,b);if(hq){hq();return}if(e.pointerType=='touch'){jo={x:a,y:b};jid=e.pointerId;tv={x:0,y:0}}else{md=1;mx=a-W/2;my=b-H/2}});
+addEventListener('pointermove',e=>{let[a,b]=rc(e);if(e.pointerType!='touch'){mx=a-W/2;my=b-H/2}
+if(jo&&e.pointerId==jid){let dx=a-jo.x,dy=b-jo.y,l=Math.hypot(dx,dy)||1,m=Math.min(1,l/50);tv={x:dx/l*m,y:dy/l*m}}});
+addEventListener('pointerup',e=>{if(e.pointerId==jid){jo=null;tv=null;jid=-1}md=0});
+function rs(){let d=Math.min(2,devicePixelRatio||1);W=cv.clientWidth;H=cv.clientHeight;cv.width=W*d;cv.height=H*d;X.setTransform(d,0,0,d,0,0)}
+addEventListener('resize',rs);
+let lt=0;function loop(t){let dt=Math.min(.05,(t-lt)/1000||0);lt=t;if(g.st=='play'&&!cur)upd(dt);draw();requestAnimationFrame(loop)}
+rs();newG(0);menu();requestAnimationFrame(loop);
+</script></body></html>
